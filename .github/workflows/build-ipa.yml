@@ -1,0 +1,63 @@
+name: Build IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build-ipa:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install dependencies
+        run: |
+          brew install ninja lld llvm meson libarchive
+
+      - name: Build iSH (unsigned IPA)
+        run: |
+          xcodebuild -project iSH.xcodeproj \
+            -scheme iSH \
+            -arch arm64 \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            -derivedDataPath build \
+            clean build
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/iSH.app Payload/
+          zip -r iSH.ipa Payload
+          rm -rf Payload
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iSH-IPA
+          path: iSH.ipa
+
+      - name: Upload dSYM
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: iSH-dSYM
+          path: build/Build/Products/Release-iphoneos/iSH.app.dSYM
+          if-no-files-found: ignore
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-logs
+          path: |
+            build/Logs
